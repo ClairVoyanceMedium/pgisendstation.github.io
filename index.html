@@ -828,7 +828,7 @@ function pgiConfirm(msg,icon){return new Promise(resolve=>{var d=$('pgi-dialog')
 function pgiPrompt(msg,def,icon){return new Promise(resolve=>{var d=$('pgi-dialog'),ic=$('pgi-dialog-icon'),m=$('pgi-dialog-msg'),inp=$('pgi-dialog-inp'),ok=$('pgi-dialog-ok'),ca=$('pgi-dialog-cancel');if(!d){resolve(window.prompt(msg,def||''));return;}if(ic)ic.textContent=icon||'?';if(m)m.textContent=msg;if(inp){inp.style.display='block';inp.value=def||'';setTimeout(()=>inp.focus(),100);}d.style.display='flex';function cleanup(r){d.style.display='none';ok.removeEventListener('click',onOk);ca.removeEventListener('click',onCancel);if(inp)inp.removeEventListener('keydown',onKey);resolve(r);}function onOk(){cleanup(inp?inp.value:'');}function onCancel(){cleanup(null);}function onKey(e){if(e.key==='Enter')onOk();if(e.key==='Escape')onCancel();}ok.addEventListener('click',onOk);ca.addEventListener('click',onCancel);if(inp)inp.addEventListener('keydown',onKey);});}
 function setProv(p){S.prov=p;lsS(SK.prov,p);}
 function setSMSP(p){S.smsProv=p;lsS(SK.smsProv,p);['twilio','vonage','webhook'].forEach(x=>{const el=$('po-'+x);if(el)el.classList.toggle('sel',p===x);const chk=$('pchk-'+x);if(chk){if(p===x){chk.style.background='var(--grn)';chk.style.borderColor='var(--grn)';}else{chk.style.background='';chk.style.borderColor='var(--b2)';}}});const wf=$('sms-webhook-form');if(wf)wf.style.display=p==='webhook'?'block':'none';}
-function saveSMSConfig(){S.smsKey=$('sms-key-inp')?.value.trim()||'';S.smsSecret=$('sms-secret-inp')?.value.trim()||'';S.smsFrom=$('sms-from-inp')?.value.trim()||'';lsS(SK.smsKey,S.smsKey);lsS(SK.smsSecret,S.smsSecret);lsS(SK.smsFrom,S.smsFrom);toast('Config SMS enregistrée','success');}
+function saveSMSConfig(){S.smsKey=$('sms-key-inp')?.value.trim()||'';S.smsSecret=$('sms-secret-inp')?.value.trim()||'';S.smsFrom=$('sms-from-inp')?.value.trim()||'';S.smsWebhook=$('sms-webhook-url')?.value.trim()||'';S.smsWebhookBody=$('sms-webhook-body')?.value.trim()||'';lsS(SK.smsKey,S.smsKey);lsS(SK.smsSecret,S.smsSecret);lsS(SK.smsFrom,S.smsFrom);lsS(SK.smsWebhook,S.smsWebhook);lsS(SK.smsWebhookBody,S.smsWebhookBody);const st=$('sw-sms-st');if(st){st.textContent='✓ '+S.smsProv+' configuré';st.style.color='var(--grn)';}toast('✓ Config SMS enregistrée','success');}
 function connectAuth(){if(S.prov==='custom'||SMTP_PROVIDERS[S.prov]?.type==='smtp'){saveSmtpConfig();return;}const id=$('cid-inp')?.value.trim();if(!id){toast('Entrez le Client ID','error');return;}S.cid=id;lsS(SK.cid,id);if(S.prov==='gmail'){initGIS();if(S.tokenClient)S.tokenClient.requestAccessToken();else toast('Google Identity Services en chargement...','warn');}else toast('Client ID enregistré','success');}
 function initGIS(){if(!window.google||!S.cid)return;S.tokenClient=google.accounts.oauth2.initTokenClient({client_id:S.cid,scope:'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email',callback:r=>{if(r.error){toast('Erreur auth: '+r.error,'error');return;}S.tok=r.access_token;S.isAuth=true;fetchGUser();},error_callback:e=>toast('Auth: '+(e.message||e.type),'error')});}
 async function fetchGUser(){try{const r=await fetch('https://www.googleapis.com/oauth2/v1/userinfo?alt=json',{headers:{Authorization:'Bearer '+S.tok}});const d=await r.json();S.email=d.email||'';lsS(SK.email,S.email);toast('Connecté: '+S.email,'success');}catch{toast('Connecté à Gmail','success');}}
@@ -1049,7 +1049,6 @@ async function launchCamp(id){
   const smtpCfg=S.smtpConfig&&Object.keys(S.smtpConfig).length?S.smtpConfig:null;
   await syncW('/campaign/launch',{id,name:c.name,type:c.type,emailList:c.emailList,templateId:c.templateId,subject:c.subject,smsText:c.smsText,mmsUrl:c.mmsUrl,provider:c.campProvider||S.prov,fromEmail:c.campFromEmail||S.ce||S.email,fromName:c.campFromName||S.cn||'',ratePerMin:c.rateEffectivePerMin||10,dailyLimit:c.dailyLimit||9999,durationH:c.durationH,durationInfinite:c.durationInfinite,sendOrder:c.sendOrder,endOfList:c.endOfList,schedEnabled:c.schedEnabled,days:c.days,daySchedules:c.daySchedules,startDate:c.startDate,endDate:c.endDate,smtpConfig:smtpCfg,attachments:(c.attachments||[]).filter(a=>!a.data)});
   toast('✅ Campagne «'+c.name+'» lancée !','success');
-  track('campaign_launch',{type:c.type,contacts:c.emailList.length,provider:c.campProvider||S.prov});
 }
 
 async function pauseCamp(id){
@@ -1464,10 +1463,42 @@ function newTpl(){
   const t={id:Date.now(),name:'Nouveau template',subject:'',html:'',body:'',plain:'',created:new Date().toISOString()};
   S.tpls.push(t);lsS(SK.tpls,S.tpls);renderTplList();loadTpl(t.id);
 }
+function getTplIcon(t){
+  const n=(t.name||'').toLowerCase();
+  if(n.includes('html')||n.includes('code'))return'</>';
+  if(n.includes('sms'))return'💬';
+  if(n.includes('promo')||n.includes('offre')||n.includes('remise')||n.includes('solde'))return'🏷️';
+  if(n.includes('bienvenu')||n.includes('welcome')||n.includes('inscription'))return'👋';
+  if(n.includes('photo')||n.includes('image')||n.includes('visuel'))return'🖼️';
+  if(n.includes('client')||n.includes('cvm')||n.includes('fidel'))return'⭐';
+  if(n.includes('campagne')||n.includes('camp'))return'📣';
+  if(n.includes('hugo')||n.includes('sophie')||n.includes('enzo')||n.includes('manon'))return'👤';
+  if(n.includes('parfait')||n.includes('best'))return'✨';
+  if(n.includes('sans'))return'📄';
+  if(n.includes('nouveau')||n.includes('new'))return'🆕';
+  if(n.includes('test'))return'🧪';
+  if(n.includes('vip')||n.includes('premium'))return'💎';
+  if(n.includes('relance')||n.includes('rappel'))return'🔔';
+  if(n.includes('merci')||n.includes('remerci'))return'🙏';
+  if((t.html||t.body||'').length>500)return'📝';
+  return'✉️';
+}
 function renderTplList(){
   const el=$('tpl-scroll');if(!el)return;
   if(!S.tpls.length){el.innerHTML='<div class="empty" style="padding:24px 10px"><p style="font-size:10px">Aucun template</p></div>';return;}
-  el.innerHTML=S.tpls.map(t=>`<div class="tpl-row ${S.activeTpl==t.id?'sel':''}" onclick="loadTpl(${t.id});closeMob('panel-templates','fab-templates')"><div class="tpl-ico">✉️</div><div style="flex:1;min-width:0;"><div class="tpl-nm">${esc(t.name)}</div><div class="tpl-sb">${esc(t.subject||'(pas de sujet)')}</div></div><button class="btn-ico" style="padding:3px 7px;font-size:10px;flex-shrink:0" onclick="event.stopPropagation();loadTpl(${t.id});closeMob('panel-templates','fab-templates')">✏️</button></div>`).join('');
+  el.innerHTML=S.tpls.map(t=>{
+    const ico=getTplIcon(t);
+    const isHtml=(t.html||t.body||'').trim().startsWith('<');
+    const preview=isHtml?'HTML':'Texte';
+    return`<div class="tpl-row ${S.activeTpl==t.id?'sel':''}" onclick="loadTpl(${t.id});closeMob('panel-templates','fab-templates')">
+<div class="tpl-ico" style="font-size:16px;background:${S.activeTpl==t.id?'var(--pur-bg)':'var(--bg4)'}">${ico}</div>
+<div style="flex:1;min-width:0;">
+  <div class="tpl-nm">${esc(t.name)}</div>
+  <div class="tpl-sb">${esc(t.subject||'(pas de sujet)')} · <span style="color:${isHtml?'var(--cyan)':'var(--text3)'};font-size:8px">${preview}</span></div>
+</div>
+<button class="btn-ico" style="padding:3px 7px;font-size:11px;flex-shrink:0;border-color:var(--pur-b);color:var(--purl)" onclick="event.stopPropagation();loadTpl(${t.id});closeMob('panel-templates','fab-templates')">✏️</button>
+</div>`;
+  }).join('');
 }
 function loadTpl(id){
   S.activeTpl=id;renderTplList();
@@ -1477,7 +1508,7 @@ function loadTpl(id){
   const pr=$('pane-rich');if(pr)pr.innerHTML=t.html||t.body||'';
   const pc=$('pane-code');if(pc)pc.value=t.html||t.body||'';
   const pp=$('pane-plain');if(pp)pp.value=t.plain||'';
-  setTTab(S.tplMode||'rich');renderImgGal();updTEChar();
+  S.tplMode='rich';setTTab('rich');renderImgGal();updTEChar();
 }
 function saveTpl(showDot=false){
   if(!S.activeTpl)return;
@@ -1489,7 +1520,6 @@ function saveTpl(showDot=false){
   const pp=$('pane-plain');if(pp)t.plain=pp.value;
   lsS(SK.tpls,S.tpls);renderTplList();
   if(showDot){const d=$('save-dot');if(d){d.classList.add('show');setTimeout(()=>d.classList.remove('show'),2000);}}
-  track('template_save',{id:S.activeTpl});
 }
 async function delTpl(){
   if(!S.activeTpl)return;
@@ -1513,8 +1543,8 @@ function setTTab(tab){
   if(hp)hp.classList.toggle('show',tab==='html');
   if(pp)pp.style.display=tab==='plain'?'block':'none';
   if(tb)tb.innerHTML=tab==='rich'?buildRichToolbar():'';
-  if(ib)ib.className='img-bar'+(tab==='rich'?' show':'');
-  if(ig)ig.className='img-gal'+(tab==='rich'&&S.imgLib.length?' show':'');
+  if(ib){ib.className='img-bar';ib.style.display=tab==='rich'?'flex':'none';}
+  if(ig){ig.className=tab==='rich'&&S.imgLib.length?'img-gal show':'img-gal';ig.style.display=tab==='rich'&&S.imgLib.length?'flex':'none';}
   if(tab==='html'){const t=S.activeTpl?S.tpls.find(x=>x.id===S.activeTpl):null;if(t){const pc=$('pane-code');if(pc)pc.value=t.html||t.body||'';}}
   if(tab==='plain'){const t=S.activeTpl?S.tpls.find(x=>x.id===S.activeTpl):null;if(t){const pp2=$('pane-plain');if(pp2)pp2.value=t.plain||'';}}
   syncPrev();
@@ -1734,7 +1764,7 @@ async function sendQuickEmail(){
   toast('Envoi en cours...','info');
   const smtpCfg=S.smtpConfig&&Object.keys(S.smtpConfig).length?S.smtpConfig:null;
   await syncW('/quick-send',{type:'email',to,subject:subj,html:r.innerHTML,from:S.ce||S.email,fromName:S.cn||'',provider:S.prov,smtpConfig:smtpCfg,attachments:S._qsAttachments});
-  toast('✓ Envoi déclenché via le Worker','success');track('quick_send',{type:'email',count:to.length});
+  toast('✓ Envoi déclenché via le Worker','success');
 }
 async function sendQuickSMS(){
   const to=($('qs-sms-to')?.value||'').split(/[\n,;]+/).map(x=>x.trim()).filter(x=>x.length>5);
@@ -1861,12 +1891,43 @@ function saveMailChannelsConfig(){
 }
 
 function initSettingsUI(){
-  const sel=$('smtp-provider-sel');if(sel&&S.prov){sel.value=S.prov;onSmtpProviderChange(S.prov);}
+  // Provider
+  const sel=$('smtp-provider-sel');
+  if(sel&&S.prov){sel.value=S.prov;onSmtpProviderChange(S.prov);}
+  // Worker
   if($('worker-url-inp')&&S.wurl)$('worker-url-inp').value=S.wurl;
+  // OAuth Client ID
   if($('cid-inp')&&S.cid)$('cid-inp').value=S.cid;
+  // Recharger smtpConfig complet
+  const cfg=S.smtpConfig||{};
+  if(cfg.type==='smtp'||cfg.type==='custom'){
+    if($('smtp-host')&&cfg.host)$('smtp-host').value=cfg.host;
+    if($('smtp-port')&&cfg.port)$('smtp-port').value=cfg.port;
+    if($('smtp-user')&&cfg.user)$('smtp-user').value=cfg.user;
+    if($('smtp-pass')&&cfg.pass)$('smtp-pass').value=cfg.pass;
+    if($('smtp-from-name')&&cfg.fromName)$('smtp-from-name').value=cfg.fromName;
+    if($('smtp-tls')&&cfg.tls)$('smtp-tls').value=cfg.tls;
+    // Afficher le statut
+    const st=$('sw-email-st');
+    if(st&&cfg.user){st.textContent='✓ '+(cfg.provider||S.prov).toUpperCase()+' configuré — '+cfg.user;st.style.color='var(--grn)';}
+  }else if(cfg.type==='api'){
+    if($('smtp-api-key')&&cfg.apiKey)$('smtp-api-key').value=cfg.apiKey;
+    if($('smtp-api-from')&&cfg.fromEmail)$('smtp-api-from').value=cfg.fromEmail;
+    if($('smtp-api-from-name')&&cfg.fromName)$('smtp-api-from-name').value=cfg.fromName;
+    const st=$('sw-email-st');
+    if(st&&cfg.fromEmail){st.textContent='✓ '+(cfg.provider||S.prov).toUpperCase()+' API configuré — '+cfg.fromEmail;st.style.color='var(--grn)';}
+  }else if(cfg.type==='mailchannels'){
+    if($('smtp-mc-from')&&cfg.fromEmail)$('smtp-mc-from').value=cfg.fromEmail;
+    if($('smtp-mc-from-name')&&cfg.fromName)$('smtp-mc-from-name').value=cfg.fromName;
+    const st=$('sw-email-st');
+    if(st&&cfg.fromEmail){st.textContent='✓ MailChannels configuré — '+cfg.fromEmail;st.style.color='var(--grn)';}
+  }
+  // SMS
   if($('sms-key-inp')&&S.smsKey)$('sms-key-inp').value=S.smsKey;
   if($('sms-secret-inp')&&S.smsSecret)$('sms-secret-inp').value=S.smsSecret;
   if($('sms-from-inp')&&S.smsFrom)$('sms-from-inp').value=S.smsFrom;
+  if($('sms-webhook-url')&&S.smsWebhook)$('sms-webhook-url').value=S.smsWebhook;
+  if($('sms-webhook-body')&&S.smsWebhookBody)$('sms-webhook-body').value=S.smsWebhookBody;
   setSMSP(S.smsProv);
 }
 
