@@ -1291,7 +1291,8 @@ function getAllEmailLogs(){
 function renderDashboard(){
   if(S.currentView!=='dashboard')return;
   renderActiveCamps();renderAllCamps();renderAnalytics();renderSMSAnalytics();renderPeriodStats();renderUnsubByCamp();renderTrackingDetail();
-  const cq=$('cq-total');if(cq)cq.textContent=S.contacts.length.toLocaleString();
+  const totalContactsAll=S.contacts.length+S.lists.filter(l=>!l.system&&l.emails?.length).reduce((s,l)=>s+(l.emails?.length||0),0);
+  const cq=$('cq-total');if(cq)cq.textContent=totalContactsAll.toLocaleString();
   const lq=$('lists-quick');if(lq){lq.innerHTML=S.lists.filter(l=>!l.system).map(l=>`<div style="padding:5px 10px;border-radius:5px;border:1px solid var(--b2);background:var(--bg3);font-size:10px;font-weight:700;color:${l.color||'var(--purl)'};">${l.name} · ${S.contacts.filter(x=>x.listIds?.includes(l.id)).length}</div>`).join('');}
   renderQuotaBox();
 }
@@ -1412,14 +1413,29 @@ function renderQuotaBox(){
 }
 
 function updateStats(){
+  // Emails envoyés = total depuis analytics + depuis emailList des camps
   const all=getAllEmailLogs();
-  const totalSent=all.length,totalOpened=all.filter(x=>x.opened).length,totalUnsub=all.filter(x=>x.unsubscribed).length;
-  const totalClics=all.reduce((s,x)=>s+((x.clicks||[]).length),0),totalCliquésU=all.filter(x=>(x.clicks||[]).length>0).length;
+  // Aussi compter depuis les camps directement (source de vérité)
+  const campsSent=S.camps.filter(c=>c.type!=='sms').reduce((s,c)=>s+(c.sent||0),0);
+  const campsOpened=S.camps.filter(c=>c.type!=='sms').reduce((s,c)=>s+(c.opened||0),0);
+  const campsUnsub=S.camps.filter(c=>c.type!=='sms').reduce((s,c)=>s+(c.unsubscribed||0),0);
+  const campsClics=S.camps.filter(c=>c.type!=='sms').reduce((s,c)=>s+(c.clicks||0),0);
+  // Prendre le max entre analytics et camps (la source la plus complète)
+  const totalSent=Math.max(all.length,campsSent);
+  const totalOpened=Math.max(all.filter(x=>x.opened).length,campsOpened);
+  const totalUnsub=Math.max(all.filter(x=>x.unsubscribed).length,campsUnsub);
+  const totalClics=Math.max(all.reduce((s,x)=>s+((x.clicks||[]).length),0),campsClics);
+  const totalCliquésU=all.filter(x=>(x.clicks||[]).length>0).length;
   const smsList=(S.analytics||[]).filter(x=>x.type==='sms');
-  const totalSMS=smsList.length,totalSMSRead=smsList.filter(x=>x.read).length;
+  const campsSMS=S.camps.filter(c=>c.type==='sms').reduce((s,c)=>s+(c.sent||0),0);
+  const totalSMS=Math.max(smsList.length,campsSMS);
+  const totalSMSRead=smsList.filter(x=>x.read).length;
   const openRate=totalSent>0?Math.round(totalOpened/totalSent*100):0;
-  const noRead=totalSent-totalOpened;
+  const noRead=Math.max(0,totalSent-totalOpened);
   const kves=$('kv-es');if(kves)kves.textContent=totalSent.toLocaleString();
+  const todayStr=new Date().toDateString();
+  const sentToday=S.camps.filter(c=>c.type!=='sms').reduce((s,camp)=>s+((camp.dailyDate===todayStr)?(camp.dailySent||0):0),0);
+  const kses=$('ks-es');if(kses)kses.textContent=sentToday.toLocaleString()+' aujourd\'hui';
   const kvop=$('kv-op');if(kvop)kvop.textContent=openRate+'%';
   const kvno=$('kv-no');if(kvno)kvno.textContent=noRead.toLocaleString();
   const kvcl=$('kv-cl');if(kvcl)kvcl.textContent=totalClics.toLocaleString();
